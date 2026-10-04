@@ -12,18 +12,25 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, "public")));
 
 io.on("connection", (socket) => {
+
     console.log("Client connecté :", socket.id);
 
     socket.on("offer", (offer) => {
+        console.log("Offer reçue");
         socket.broadcast.emit("offer", offer);
     });
 
     socket.on("answer", (answer) => {
+        console.log("Answer reçue");
         socket.broadcast.emit("answer", answer);
     });
 
     socket.on("ice-candidate", (candidate) => {
         socket.broadcast.emit("ice-candidate", candidate);
+    });
+
+    socket.on("disconnect", () => {
+        console.log("Client déconnecté :", socket.id);
     });
 });
 

