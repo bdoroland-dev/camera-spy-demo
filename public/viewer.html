@@ -1,18 +1,11 @@
 <!DOCTYPE html>
 <html lang="fr">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0">
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CameraShare — Récepteur PC</title>
 
     <style>
-
         body {
             margin: 0;
             background: #111;
@@ -44,176 +37,160 @@
             font-size: 16px;
             cursor: pointer;
         }
-
     </style>
-
 </head>
 
 <body>
 
-    <h1>CameraShare — Récepteur PC</h1>
+<h1>CameraShare — Récepteur PC</h1>
 
-    <div id="status">
-        En attente du téléphone...
-    </div>
+<div id="status">
+    En attente du téléphone...
+</div>
 
-    <button id="startVideo">
-        Afficher le flux vidéo
-    </button>
+<button id="startVideo" disabled>
+    Connexion...
+</button>
 
-    <br>
-    <br>
+<br><br>
 
-    <video
-        id="remoteVideo"
-        muted
-        playsinline>
-    </video>
+<video
+    id="remoteVideo"
+    autoplay
+    muted
+    playsinline>
+</video>
 
-    <script src="/socket.io/socket.io.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 
-    <script>
+<script>
 
-    const socket = io();
+const socket = io();
 
-    const video =
-        document.getElementById("remoteVideo");
+const video = document.getElementById("remoteVideo");
+const status = document.getElementById("status");
+const startVideo = document.getElementById("startVideo");
 
-    const status =
-        document.getElementById("status");
+let peerConnection = null;
+let remoteStream = null;
 
-    const startVideo =
-        document.getElementById("startVideo");
-
-    let peerConnection = null;
-
-    const config = {
-
-        iceServers: [
-
-            {
-                urls:
-                    "stun:stun.l.google.com:19302"
-            }
-
-        ]
-
-    };
-
-    startVideo.addEventListener(
-        "click",
-        async () => {
-
-            try {
-
-                await video.play();
-
-                startVideo.style.display =
-                    "none";
-
-                status.textContent =
-                    "● Flux caméra affiché";
-
-            } catch (error) {
-
-                console.error(
-                    "Lecture impossible :",
-                    error
-                );
-
-            }
-
+const config = {
+    iceServers: [
+        {
+            urls: "stun:stun.l.google.com:19302"
         }
-    );
+    ]
+};
 
-    socket.on("offer", async (offer) => {
+socket.on("offer", async (offer) => {
 
-        console.log("Offer reçue");
+    console.log("Offer reçue");
+
+    status.textContent = "Connexion au téléphone...";
+
+    peerConnection = new RTCPeerConnection(config);
+
+    peerConnection.ontrack = (event) => {
+
+        console.log("Flux vidéo reçu");
+
+        if (!remoteStream) {
+            remoteStream = new MediaStream();
+            video.srcObject = remoteStream;
+        }
+
+        remoteStream.addTrack(event.track);
 
         status.textContent =
-            "Connexion au téléphone...";
+            "Flux reçu — connexion en cours...";
+    };
 
-        peerConnection =
-            new RTCPeerConnection(config);
+    peerConnection.onicecandidate = (event) => {
 
-        peerConnection.ontrack =
-            (event) => {
+        if (event.candidate) {
+            socket.emit("ice-candidate", event.candidate);
+        }
+    };
 
-                console.log(
-                    "Flux vidéo reçu"
-                );
+    peerConnection.onconnectionstatechange = () => {
 
-                if (
-                    event.streams &&
-                    event.streams.length > 0
-                ) {
-
-                    video.srcObject =
-                        event.streams[0];
-
-                    status.textContent =
-                        "● Flux vidéo reçu — cliquez sur Afficher le flux vidéo";
-
-                }
-
-            };
-
-        peerConnection.onicecandidate =
-            (event) => {
-
-                if (event.candidate) {
-
-                    socket.emit(
-                        "ice-candidate",
-                        event.candidate
-                    );
-
-                }
-
-            };
-
-        await peerConnection.setRemoteDescription(
-            offer
+        console.log(
+            "WebRTC :",
+            peerConnection.connectionState
         );
 
-        const answer =
-            await peerConnection.createAnswer();
+        if (
+            peerConnection.connectionState === "connected"
+        ) {
 
-        await peerConnection.setLocalDescription(
-            answer
-        );
+            status.textContent =
+                "● Flux caméra connecté";
 
-        socket.emit(
-            "answer",
-            answer
-        );
+            startVideo.disabled = false;
+            startVideo.textContent =
+                "Afficher le flux vidéo";
+        }
 
-    });
+        if (
+            peerConnection.connectionState === "failed"
+        ) {
 
-    socket.on(
-        "ice-candidate",
-        async (candidate) => {
-
-            if (!peerConnection) {
-                return;
-            }
-
-            try {
-
-                await peerConnection
-                    .addIceCandidate(candidate);
-
-            } catch (error) {
-
-                console.error(error);
-
-            }
+            status.textContent =
+                "Connexion WebRTC échouée";
 
         }
-    );
+    };
 
-    </script>
+    await peerConnection.setRemoteDescription(offer);
+
+    const answer =
+        await peerConnection.createAnswer();
+
+    await peerConnection.setLocalDescription(answer);
+
+    socket.emit("answer", answer);
+});
+
+socket.on("ice-candidate", async (candidate) => {
+
+    if (!peerConnection) {
+        return;
+    }
+
+    try {
+        await peerConnection.addIceCandidate(candidate);
+    } catch (error) {
+        console.error("Erreur ICE :", error);
+    }
+});
+
+startVideo.addEventListener("click", async () => {
+
+    console.log("Bouton vidéo cliqué");
+
+    try {
+
+        await video.play();
+
+        startVideo.style.display = "none";
+
+        status.textContent =
+            "● Flux caméra affiché";
+
+    } catch (error) {
+
+        console.error(
+            "Erreur lecture vidéo :",
+            error
+        );
+
+        status.textContent =
+            "Impossible de lire le flux vidéo.";
+
+    }
+});
+
+</script>
 
 </body>
-
 </html>
