@@ -1,8 +1,13 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0">
 
     <title>CameraShare — Récepteur PC</title>
 
@@ -56,11 +61,11 @@
         Afficher le flux vidéo
     </button>
 
-    <br><br>
+    <br>
+    <br>
 
     <video
         id="remoteVideo"
-        autoplay
         muted
         playsinline>
     </video>
@@ -69,29 +74,42 @@
 
     <script>
 
-        const socket = io();
+    const socket = io();
 
-        const video = document.getElementById("remoteVideo");
-        const status = document.getElementById("status");
-        const startVideo = document.getElementById("startVideo");
+    const video =
+        document.getElementById("remoteVideo");
 
-        let peerConnection = null;
+    const status =
+        document.getElementById("status");
 
-        const config = {
-            iceServers: [
-                {
-                    urls: "stun:stun.l.google.com:19302"
-                }
-            ]
-        };
+    const startVideo =
+        document.getElementById("startVideo");
 
-        startVideo.addEventListener("click", async () => {
+    let peerConnection = null;
+
+    const config = {
+
+        iceServers: [
+
+            {
+                urls:
+                    "stun:stun.l.google.com:19302"
+            }
+
+        ]
+
+    };
+
+    startVideo.addEventListener(
+        "click",
+        async () => {
 
             try {
 
                 await video.play();
 
-                startVideo.style.display = "none";
+                startVideo.style.display =
+                    "none";
 
                 status.textContent =
                     "● Flux caméra affiché";
@@ -99,27 +117,31 @@
             } catch (error) {
 
                 console.error(
-                    "Impossible de lire le flux :",
+                    "Lecture impossible :",
                     error
                 );
 
             }
 
-        });
+        }
+    );
 
-        socket.on("offer", async (offer) => {
+    socket.on("offer", async (offer) => {
 
-            console.log("Offer reçue");
+        console.log("Offer reçue");
 
-            status.textContent =
-                "Connexion au téléphone...";
+        status.textContent =
+            "Connexion au téléphone...";
 
-            peerConnection =
-                new RTCPeerConnection(config);
+        peerConnection =
+            new RTCPeerConnection(config);
 
-            peerConnection.ontrack = event => {
+        peerConnection.ontrack =
+            (event) => {
 
-                console.log("Flux vidéo reçu");
+                console.log(
+                    "Flux vidéo reçu"
+                );
 
                 if (
                     event.streams &&
@@ -136,7 +158,8 @@
 
             };
 
-            peerConnection.onicecandidate = event => {
+        peerConnection.onicecandidate =
+            (event) => {
 
                 if (event.candidate) {
 
@@ -149,31 +172,27 @@
 
             };
 
-            peerConnection.onconnectionstatechange = () => {
+        await peerConnection.setRemoteDescription(
+            offer
+        );
 
-                console.log(
-                    "État WebRTC :",
-                    peerConnection.connectionState
-                );
+        const answer =
+            await peerConnection.createAnswer();
 
-            };
+        await peerConnection.setLocalDescription(
+            answer
+        );
 
-            await peerConnection.setRemoteDescription(
-                offer
-            );
+        socket.emit(
+            "answer",
+            answer
+        );
 
-            const answer =
-                await peerConnection.createAnswer();
+    });
 
-            await peerConnection.setLocalDescription(
-                answer
-            );
-
-            socket.emit("answer", answer);
-
-        });
-
-        socket.on("ice-candidate", async (candidate) => {
+    socket.on(
+        "ice-candidate",
+        async (candidate) => {
 
             if (!peerConnection) {
                 return;
@@ -181,22 +200,20 @@
 
             try {
 
-                await peerConnection.addIceCandidate(
-                    candidate
-                );
+                await peerConnection
+                    .addIceCandidate(candidate);
 
             } catch (error) {
 
-                console.error(
-                    "Erreur ICE :",
-                    error
-                );
+                console.error(error);
 
             }
 
-        });
+        }
+    );
 
     </script>
 
 </body>
+
 </html>

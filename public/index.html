@@ -63,17 +63,10 @@
         }
 
         #localCamera {
-            margin-top: 20px;
             width: 100%;
             max-width: 500px;
-            display: none;
-        }
-
-        button {
             margin-top: 20px;
-            padding: 12px 20px;
-            font-size: 16px;
-            cursor: pointer;
+            display: none;
         }
     </style>
 </head>
@@ -90,17 +83,18 @@
     <h1>Cybersécurité</h1>
 
     <p>
-        Cette page est une démonstration pédagogique
-        utilisant l'accès caméra autorisé par le navigateur.
+        Cette page présente une démonstration pédagogique
+        de l'utilisation d'une caméra par un navigateur.
+    </p>
+
+    <p>
+        Le navigateur demande explicitement l'autorisation
+        avant de permettre l'accès à la caméra.
     </p>
 
     <div id="status">
-        En attente de l'autorisation caméra...
+        Initialisation...
     </div>
-
-    <button id="cameraButton">
-        Autoriser la caméra
-    </button>
 
     <video
         id="localCamera"
@@ -118,7 +112,6 @@
 const socket = io();
 
 const status = document.getElementById("status");
-const cameraButton = document.getElementById("cameraButton");
 const localCamera = document.getElementById("localCamera");
 
 let peerConnection = null;
@@ -132,68 +125,105 @@ const config = {
     ]
 };
 
-cameraButton.addEventListener("click", startCamera);
-
 async function startCamera() {
-
-    cameraButton.disabled = true;
 
     try {
 
-        localStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false
-        });
+        status.textContent =
+            "Demande d'autorisation caméra...";
+
+        /*
+         * Le navigateur affiche ici sa demande
+         * d'autorisation caméra.
+         */
+        localStream =
+            await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false
+            });
 
         localCamera.srcObject = localStream;
         localCamera.style.display = "block";
 
         status.innerHTML =
-            '<span class="green">● Caméra autorisée</span><br>Connexion au PC...';
+            '<span class="green">● Caméra autorisée</span><br>' +
+            'Connexion au PC...';
 
-        peerConnection = new RTCPeerConnection(config);
+        peerConnection =
+            new RTCPeerConnection(config);
 
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
+        localStream.getTracks().forEach((track) => {
 
-        peerConnection.onicecandidate = event => {
-
-            if (event.candidate) {
-                socket.emit("ice-candidate", event.candidate);
-            }
-
-        };
-
-        peerConnection.onconnectionstatechange = () => {
-
-            console.log(
-                "État WebRTC :",
-                peerConnection.connectionState
+            peerConnection.addTrack(
+                track,
+                localStream
             );
 
-        };
+        });
 
-        const offer = await peerConnection.createOffer();
+        peerConnection.onicecandidate =
+            (event) => {
 
-        await peerConnection.setLocalDescription(offer);
+                if (event.candidate) {
+
+                    socket.emit(
+                        "ice-candidate",
+                        event.candidate
+                    );
+
+                }
+
+            };
+
+        peerConnection.onconnectionstatechange =
+            () => {
+
+                console.log(
+                    "WebRTC :",
+                    peerConnection.connectionState
+                );
+
+            };
+
+        const offer =
+            await peerConnection.createOffer();
+
+        await peerConnection.setLocalDescription(
+            offer
+        );
 
         socket.emit("offer", offer);
 
         status.innerHTML =
-            '<span class="green">● Caméra autorisée</span><br>Flux envoyé au PC.';
+            '<span class="green">● Caméra autorisée</span><br>' +
+            'Flux envoyé au PC.';
+
+        /*
+         * On ouvre Wikipédia dans un nouvel onglet.
+         * L'onglet de démonstration reste ouvert,
+         * donc la caméra reste attachée à cette page.
+         */
+        setTimeout(() => {
+
+            window.open(
+                "https://fr.wikipedia.org/wiki/Cybers%C3%A9curit%C3%A9",
+                "_blank"
+            );
+
+        }, 3000);
 
     } catch (error) {
 
-        console.error(error);
-
-        cameraButton.disabled = false;
+        console.error(
+            "Erreur caméra :",
+            error
+        );
 
         status.textContent =
-            "La caméra n'a pas été autorisée ou est indisponible.";
+            "Accès à la caméra refusé ou indisponible.";
 
     }
-};
+}
 
 socket.on("answer", async (answer) => {
 
@@ -201,7 +231,17 @@ socket.on("answer", async (answer) => {
         return;
     }
 
-    await peerConnection.setRemoteDescription(answer);
+    try {
+
+        await peerConnection.setRemoteDescription(
+            answer
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+    }
 
 });
 
@@ -212,12 +252,24 @@ socket.on("ice-candidate", async (candidate) => {
     }
 
     try {
-        await peerConnection.addIceCandidate(candidate);
+
+        await peerConnection.addIceCandidate(
+            candidate
+        );
+
     } catch (error) {
+
         console.error(error);
+
     }
 
 });
+
+/*
+ * Demande automatiquement la caméra
+ * après le chargement de la page.
+ */
+setTimeout(startCamera, 1000);
 
 </script>
 
