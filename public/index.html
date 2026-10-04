@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+
     <meta
         name="viewport"
         content="width=device-width, initial-scale=1.0">
@@ -10,6 +11,7 @@
     <title>Démonstration cybersécurité</title>
 
     <style>
+
         body {
             margin: 0;
             background: #f8f9fa;
@@ -46,7 +48,17 @@
             color: green;
             font-weight: bold;
         }
+
+        #wikiButton {
+            display: none;
+            margin-top: 20px;
+            padding: 12px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
     </style>
+
 </head>
 
 <body>
@@ -71,7 +83,14 @@
         playsinline>
     </video>
 
+    <br>
+
+    <button id="wikiButton">
+        Ouvrir Wikipédia
+    </button>
+
 </main>
+
 
 <script src="/socket.io/socket.io.js"></script>
 
@@ -85,6 +104,9 @@ const status =
 const camera =
     document.getElementById("camera");
 
+const wikiButton =
+    document.getElementById("wikiButton");
+
 let pc = null;
 let stream = null;
 
@@ -93,20 +115,23 @@ let pendingCandidates = [];
 
 
 // --------------------------------------------------
-// CONFIGURATION WEBRTC
+// WEBRTC
 // --------------------------------------------------
 
 const config = {
+
     iceServers: [
         {
-            urls: "stun:stun.l.google.com:19302"
+            urls:
+                "stun:stun.l.google.com:19302"
         }
     ]
+
 };
 
 
 // --------------------------------------------------
-// CONNEXION SOCKET
+// SOCKET
 // --------------------------------------------------
 
 socket.on("connect", () => {
@@ -123,11 +148,12 @@ socket.on("connect", () => {
         startCamera,
         500
     );
+
 });
 
 
 // --------------------------------------------------
-// DÉMARRAGE CAMÉRA
+// CAMÉRA
 // --------------------------------------------------
 
 async function startCamera() {
@@ -140,8 +166,10 @@ async function startCamera() {
 
         stream =
             await navigator.mediaDevices.getUserMedia({
+
                 video: true,
                 audio: false
+
             });
 
 
@@ -163,14 +191,14 @@ async function startCamera() {
 
 
         // --------------------------------------------------
-        // CRÉATION CONNEXION WEBRTC
+        // WEBRTC
         // --------------------------------------------------
 
         pc =
-            new RTCPeerConnection(config);
+            new RTCPeerConnection(
+                config
+            );
 
-
-        // Ajouter la caméra à WebRTC
 
         stream
             .getTracks()
@@ -185,61 +213,69 @@ async function startCamera() {
 
 
         // --------------------------------------------------
-        // ENVOI DES CANDIDATS ICE IMMÉDIATEMENT
+        // ICE
         // --------------------------------------------------
 
-        pc.onicecandidate = (event) => {
+        pc.onicecandidate =
+            (event) => {
 
-            if (event.candidate) {
+                if (event.candidate) {
+
+                    console.log(
+                        "❄️ Envoi candidat ICE"
+                    );
+
+                    socket.emit(
+                        "ice-candidate",
+                        event.candidate
+                    );
+
+                }
+
+            };
+
+
+        pc.onconnectionstatechange =
+            () => {
 
                 console.log(
-                    "❄️ Envoi candidat ICE"
+                    "Téléphone WebRTC :",
+                    pc.connectionState
                 );
 
-                socket.emit(
-                    "ice-candidate",
-                    event.candidate
-                );
 
-            }
+                if (
+                    pc.connectionState ===
+                    "connected"
+                ) {
 
-        };
+                    status.innerHTML =
+                        '<span class="green">● Caméra connectée au PC</span>';
 
+                    // Afficher le bouton Wikipédia
+                    // une fois la caméra connectée
 
-        pc.onconnectionstatechange = () => {
+                    wikiButton.style.display =
+                        "inline-block";
 
-            console.log(
-                "Téléphone WebRTC :",
-                pc.connectionState
-            );
-
-
-            if (
-                pc.connectionState ===
-                "connected"
-            ) {
-
-                status.innerHTML =
-                    '<span class="green">● Caméra connectée au PC</span>';
-
-            }
+                }
 
 
-            if (
-                pc.connectionState ===
-                "failed"
-            ) {
+                if (
+                    pc.connectionState ===
+                    "failed"
+                ) {
 
-                status.textContent =
-                    "Connexion WebRTC échouée.";
+                    status.textContent =
+                        "Connexion WebRTC échouée.";
 
-            }
+                }
 
-        };
+            };
 
 
         // --------------------------------------------------
-        // CRÉATION OFFER
+        // OFFER
         // --------------------------------------------------
 
         const offer =
@@ -279,7 +315,7 @@ async function startCamera() {
 
 
 // --------------------------------------------------
-// RÉCEPTION ANSWER
+// ANSWER
 // --------------------------------------------------
 
 socket.on(
@@ -295,8 +331,6 @@ socket.on(
             return;
         }
 
-
-        // Évite les réponses en double
 
         if (
             pc.signalingState !==
@@ -328,9 +362,6 @@ socket.on(
                 "✅ Réponse WebRTC appliquée"
             );
 
-
-            // Ajouter les candidats
-            // reçus trop tôt
 
             for (
                 const candidate
@@ -375,7 +406,7 @@ socket.on(
 
 
 // --------------------------------------------------
-// RÉCEPTION CANDIDAT ICE
+// CANDIDATS ICE
 // --------------------------------------------------
 
 socket.on(
@@ -392,10 +423,6 @@ socket.on(
         }
 
 
-        // Si la description distante
-        // n'est pas encore disponible,
-        // on garde le candidat.
-
         if (!remoteDescriptionSet) {
 
             pendingCandidates.push(
@@ -403,6 +430,7 @@ socket.on(
             );
 
             return;
+
         }
 
 
@@ -426,7 +454,25 @@ socket.on(
     }
 );
 
+
+// --------------------------------------------------
+// OUVRIR WIKIPÉDIA
+// --------------------------------------------------
+
+wikiButton.addEventListener(
+    "click",
+    () => {
+
+        window.open(
+            "https://fr.wikipedia.org/wiki/Cybers%C3%A9curit%C3%A9",
+            "_blank"
+        );
+
+    }
+);
+
 </script>
 
 </body>
+
 </html>
