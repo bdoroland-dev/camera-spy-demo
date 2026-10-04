@@ -3,147 +3,368 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Démonstration</title>
+    <title>Démonstration cybersécurité</title>
+
+    <style>
+        body {
+            margin: 0;
+            background: #f8f9fa;
+            color: #202122;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        main {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        h1 {
+            font-family: Georgia, serif;
+        }
+
+        #status {
+            margin: 25px 0;
+            padding: 20px;
+            background: white;
+            border: 1px solid #aaa;
+        }
+
+        #camera {
+            width: 100%;
+            max-width: 600px;
+            background: black;
+            display: none;
+        }
+
+        .green {
+            color: green;
+            font-weight: bold;
+        }
+    </style>
 </head>
 
 <body>
+
+<main>
+
     <h1>Démonstration cybersécurité</h1>
 
-    <p id="status">Connexion...</p>
+    <p>
+        Cette page présente une démonstration pédagogique
+        de l'utilisation d'une caméra par un navigateur.
+    </p>
 
-    <video id="camera"
-           autoplay
-           muted
-           playsinline
-           style="width:100%;max-width:500px;">
+    <div id="status">
+        Connexion au serveur...
+    </div>
+
+    <video
+        id="camera"
+        autoplay
+        muted
+        playsinline>
     </video>
+
+</main>
 
 <script src="/socket.io/socket.io.js"></script>
 
 <script>
+
 const socket = io();
 
-const status = document.getElementById("status");
-const camera = document.getElementById("camera");
+const status =
+    document.getElementById("status");
 
-let pc;
-let stream;
+const camera =
+    document.getElementById("camera");
+
+let pc = null;
+let stream = null;
+let answerReceived = false;
+
+const config = {
+    iceServers: [
+        {
+            urls: "stun:stun.l.google.com:19302"
+        }
+    ]
+};
+
+
+// --------------------------------------------------
+// CONNEXION SOCKET
+// --------------------------------------------------
 
 socket.on("connect", () => {
-    console.log("Socket connecté :", socket.id);
-    status.textContent = "Connexion au serveur...";
-    
-    setTimeout(start, 1000);
+
+    console.log(
+        "Socket connecté :",
+        socket.id
+    );
+
+    status.textContent =
+        "Serveur connecté — demande de caméra...";
+
+    setTimeout(
+        startCamera,
+        1000
+    );
 });
 
-socket.on("disconnect", () => {
-    console.log("Socket déconnecté");
-    status.textContent = "Serveur déconnecté";
-});
 
-async function start() {
+// --------------------------------------------------
+// CAMÉRA
+// --------------------------------------------------
+
+async function startCamera() {
 
     try {
 
-        status.textContent = "Demande d'autorisation caméra...";
+        status.textContent =
+            "Demande d'autorisation caméra...";
 
-        stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false
-        });
+        stream =
+            await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false
+            });
+
+        console.log(
+            "Caméra autorisée"
+        );
 
         camera.srcObject = stream;
 
-        status.textContent = "Caméra autorisée — connexion au PC...";
+        camera.style.display =
+            "block";
 
-        pc = new RTCPeerConnection({
-            iceServers: [
-                { urls: "stun:stun.l.google.com:19302" }
-            ]
-        });
+        status.innerHTML =
+            '<span class="green">● Caméra autorisée</span><br>' +
+            'Connexion au PC...';
 
-        stream.getTracks().forEach(track => {
-            pc.addTrack(track, stream);
-        });
+
+        // --------------------------------------------------
+        // WEBRTC
+        // --------------------------------------------------
+
+        pc =
+            new RTCPeerConnection(config);
+
+
+        stream
+            .getTracks()
+            .forEach(track => {
+
+                pc.addTrack(
+                    track,
+                    stream
+                );
+
+            });
+
 
         pc.onconnectionstatechange = () => {
+
             console.log(
                 "Téléphone WebRTC :",
                 pc.connectionState
             );
+
+            if (
+                pc.connectionState ===
+                "connected"
+            ) {
+
+                status.innerHTML =
+                    '<span class="green">● Caméra connectée au PC</span>';
+
+            }
+
         };
 
-        const offer = await pc.createOffer();
 
-        await pc.setLocalDescription(offer);
+        // --------------------------------------------------
+        // CRÉATION OFFER
+        // --------------------------------------------------
 
-        await waitIce(pc);
+        const offer =
+            await pc.createOffer();
 
-        console.log("Envoi de l'offre");
+        await pc.setLocalDescription(
+            offer
+        );
 
-        socket.emit("offer", pc.localDescription);
 
-        status.textContent = "● Caméra connectée au PC";
+        // Attendre que les candidats ICE
+        // soient intégrés au SDP
 
-    } catch (error) {
+        await waitForIceGatheringComplete(
+            pc
+        );
 
-        console.error(error);
+
+        console.log(
+            "Envoi de l'offre"
+        );
+
+        socket.emit(
+            "offer",
+            pc.localDescription
+        );
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Erreur caméra/WebRTC :",
+            error
+        );
 
         status.textContent =
-            "Erreur caméra : " + error.message;
+            "Erreur : " + error.message;
+
     }
+
 }
 
-socket.on("answer", async (answer) => {
 
-    console.log("Réponse du PC reçue");
+// --------------------------------------------------
+// RÉCEPTION DE LA RÉPONSE DU PC
+// --------------------------------------------------
 
-    try {
+socket.on(
+    "answer",
+    async (answer) => {
 
-        await pc.setRemoteDescription(answer);
+        console.log(
+            "Réponse du PC reçue"
+        );
 
-        console.log("Réponse WebRTC appliquée");
 
-    } catch (error) {
+        // Si une réponse a déjà été appliquée,
+        // on ignore les suivantes.
 
-        console.error(error);
+        if (answerReceived) {
 
-    }
-});
+            console.log(
+                "Réponse supplémentaire ignorée"
+            );
 
-function waitIce(pc) {
-
-    return new Promise(resolve => {
-
-        if (pc.iceGatheringState === "complete") {
-            resolve();
             return;
         }
 
-        const check = () => {
+
+        if (!pc) {
+
+            console.log(
+                "Aucune connexion WebRTC"
+            );
+
+            return;
+        }
+
+
+        // L'answer n'est valable que lorsque
+        // le téléphone possède encore son offer.
+
+        if (
+            pc.signalingState !==
+            "have-local-offer"
+        ) {
+
+            console.log(
+                "Réponse ignorée. État WebRTC :",
+                pc.signalingState
+            );
+
+            return;
+        }
+
+
+        try {
+
+            await pc.setRemoteDescription(
+                answer
+            );
+
+            answerReceived = true;
+
+            console.log(
+                "Réponse WebRTC appliquée"
+            );
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "Erreur avec la réponse WebRTC :",
+                error
+            );
+
+        }
+
+    }
+);
+
+
+// --------------------------------------------------
+// ATTENTE ICE
+// --------------------------------------------------
+
+function waitForIceGatheringComplete(pc) {
+
+    return new Promise(resolve => {
+
+        if (
+            pc.iceGatheringState ===
+            "complete"
+        ) {
+
+            resolve();
+
+            return;
+        }
+
+
+        function checkState() {
 
             console.log(
                 "ICE :",
                 pc.iceGatheringState
             );
 
-            if (pc.iceGatheringState === "complete") {
+
+            if (
+                pc.iceGatheringState ===
+                "complete"
+            ) {
 
                 pc.removeEventListener(
                     "icegatheringstatechange",
-                    check
+                    checkState
                 );
 
                 resolve();
+
             }
-        };
+
+        }
+
 
         pc.addEventListener(
             "icegatheringstatechange",
-            check
+            checkState
         );
+
     });
+
 }
+
 </script>
 
 </body>
