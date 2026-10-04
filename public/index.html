@@ -1,8 +1,12 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
     <title>Démonstration cybersécurité</title>
 
     <style>
@@ -83,7 +87,14 @@ const camera =
 
 let pc = null;
 let stream = null;
-let answerReceived = false;
+
+let remoteDescriptionSet = false;
+let pendingCandidates = [];
+
+
+// --------------------------------------------------
+// CONFIGURATION WEBRTC
+// --------------------------------------------------
 
 const config = {
     iceServers: [
@@ -110,13 +121,13 @@ socket.on("connect", () => {
 
     setTimeout(
         startCamera,
-        1000
+        500
     );
 });
 
 
 // --------------------------------------------------
-// CAMÉRA
+// DÉMARRAGE CAMÉRA
 // --------------------------------------------------
 
 async function startCamera() {
@@ -126,20 +137,25 @@ async function startCamera() {
         status.textContent =
             "Demande d'autorisation caméra...";
 
+
         stream =
             await navigator.mediaDevices.getUserMedia({
                 video: true,
                 audio: false
             });
 
+
         console.log(
-            "Caméra autorisée"
+            "📷 Caméra autorisée"
         );
 
-        camera.srcObject = stream;
+
+        camera.srcObject =
+            stream;
 
         camera.style.display =
             "block";
+
 
         status.innerHTML =
             '<span class="green">● Caméra autorisée</span><br>' +
@@ -147,12 +163,14 @@ async function startCamera() {
 
 
         // --------------------------------------------------
-        // WEBRTC
+        // CRÉATION CONNEXION WEBRTC
         // --------------------------------------------------
 
         pc =
             new RTCPeerConnection(config);
 
+
+        // Ajouter la caméra à WebRTC
 
         stream
             .getTracks()
@@ -166,12 +184,35 @@ async function startCamera() {
             });
 
 
+        // --------------------------------------------------
+        // ENVOI DES CANDIDATS ICE IMMÉDIATEMENT
+        // --------------------------------------------------
+
+        pc.onicecandidate = (event) => {
+
+            if (event.candidate) {
+
+                console.log(
+                    "❄️ Envoi candidat ICE"
+                );
+
+                socket.emit(
+                    "ice-candidate",
+                    event.candidate
+                );
+
+            }
+
+        };
+
+
         pc.onconnectionstatechange = () => {
 
             console.log(
                 "Téléphone WebRTC :",
                 pc.connectionState
             );
+
 
             if (
                 pc.connectionState ===
@@ -180,6 +221,17 @@ async function startCamera() {
 
                 status.innerHTML =
                     '<span class="green">● Caméra connectée au PC</span>';
+
+            }
+
+
+            if (
+                pc.connectionState ===
+                "failed"
+            ) {
+
+                status.textContent =
+                    "Connexion WebRTC échouée.";
 
             }
 
@@ -193,22 +245,16 @@ async function startCamera() {
         const offer =
             await pc.createOffer();
 
+
         await pc.setLocalDescription(
             offer
         );
 
 
-        // Attendre que les candidats ICE
-        // soient intégrés au SDP
-
-        await waitForIceGatheringComplete(
-            pc
-        );
-
-
         console.log(
-            "Envoi de l'offre"
+            "📤 Envoi de l'offre"
         );
+
 
         socket.emit(
             "offer",
@@ -233,7 +279,7 @@ async function startCamera() {
 
 
 // --------------------------------------------------
-// RÉCEPTION DE LA RÉPONSE DU PC
+// RÉCEPTION ANSWER
 // --------------------------------------------------
 
 socket.on(
@@ -241,35 +287,16 @@ socket.on(
     async (answer) => {
 
         console.log(
-            "Réponse du PC reçue"
+            "📥 Réponse du PC reçue"
         );
 
 
-        // Si une réponse a déjà été appliquée,
-        // on ignore les suivantes.
-
-        if (answerReceived) {
-
-            console.log(
-                "Réponse supplémentaire ignorée"
-            );
-
-            return;
-        }
-
-
         if (!pc) {
-
-            console.log(
-                "Aucune connexion WebRTC"
-            );
-
             return;
         }
 
 
-        // L'answer n'est valable que lorsque
-        // le téléphone possède encore son offer.
+        // Évite les réponses en double
 
         if (
             pc.signalingState !==
@@ -277,11 +304,12 @@ socket.on(
         ) {
 
             console.log(
-                "Réponse ignorée. État WebRTC :",
+                "Réponse ignorée — état :",
                 pc.signalingState
             );
 
             return;
+
         }
 
 
@@ -291,18 +319,52 @@ socket.on(
                 answer
             );
 
-            answerReceived = true;
+
+            remoteDescriptionSet =
+                true;
+
 
             console.log(
-                "Réponse WebRTC appliquée"
+                "✅ Réponse WebRTC appliquée"
             );
+
+
+            // Ajouter les candidats
+            // reçus trop tôt
+
+            for (
+                const candidate
+                of pendingCandidates
+            ) {
+
+                try {
+
+                    await pc.addIceCandidate(
+                        candidate
+                    );
+
+                }
+
+                catch (error) {
+
+                    console.error(
+                        "Erreur ICE :",
+                        error
+                    );
+
+                }
+
+            }
+
+
+            pendingCandidates = [];
 
         }
 
         catch (error) {
 
             console.error(
-                "Erreur avec la réponse WebRTC :",
+                "Erreur avec la réponse :",
                 error
             );
 
@@ -313,57 +375,56 @@ socket.on(
 
 
 // --------------------------------------------------
-// ATTENTE ICE
+// RÉCEPTION CANDIDAT ICE
 // --------------------------------------------------
 
-function waitForIceGatheringComplete(pc) {
+socket.on(
+    "ice-candidate",
+    async (candidate) => {
 
-    return new Promise(resolve => {
+        console.log(
+            "❄️ Candidat ICE reçu"
+        );
 
-        if (
-            pc.iceGatheringState ===
-            "complete"
-        ) {
 
-            resolve();
+        if (!pc) {
+            return;
+        }
+
+
+        // Si la description distante
+        // n'est pas encore disponible,
+        // on garde le candidat.
+
+        if (!remoteDescriptionSet) {
+
+            pendingCandidates.push(
+                candidate
+            );
 
             return;
         }
 
 
-        function checkState() {
+        try {
 
-            console.log(
-                "ICE :",
-                pc.iceGatheringState
+            await pc.addIceCandidate(
+                candidate
             );
-
-
-            if (
-                pc.iceGatheringState ===
-                "complete"
-            ) {
-
-                pc.removeEventListener(
-                    "icegatheringstatechange",
-                    checkState
-                );
-
-                resolve();
-
-            }
 
         }
 
+        catch (error) {
 
-        pc.addEventListener(
-            "icegatheringstatechange",
-            checkState
-        );
+            console.error(
+                "Erreur ajout ICE :",
+                error
+            );
 
-    });
+        }
 
-}
+    }
+);
 
 </script>
 

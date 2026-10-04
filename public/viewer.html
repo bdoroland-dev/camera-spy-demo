@@ -2,26 +2,45 @@
 <html lang="fr">
 
 <head>
+
     <meta charset="UTF-8">
-    <title>CameraShare</title>
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+    <title>CameraShare — PC</title>
 
     <style>
 
         body {
-            background:#111;
-            color:white;
-            font-family:Arial;
-            text-align:center;
+            margin: 0;
+            background: #111;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
         }
 
-        video {
-            width:90%;
-            max-width:1000px;
-            margin-top:20px;
-            background:black;
+        h1 {
+            margin: 30px;
+        }
+
+        #status {
+            margin: 20px;
+            font-size: 18px;
+        }
+
+        #video {
+            width: 90%;
+            max-width: 1000px;
+            min-height: 300px;
+            background: black;
+            border-radius: 10px;
+            object-fit: contain;
         }
 
     </style>
+
 </head>
 
 <body>
@@ -32,11 +51,13 @@
     En attente du téléphone...
 </div>
 
-<video id="video"
-       autoplay
-       muted
-       playsinline>
+<video
+    id="video"
+    autoplay
+    muted
+    playsinline>
 </video>
+
 
 <script src="/socket.io/socket.io.js"></script>
 
@@ -50,7 +71,32 @@ const status =
 const video =
     document.getElementById("video");
 
-let pc;
+let pc = null;
+
+let remoteDescriptionSet = false;
+
+let pendingCandidates = [];
+
+
+// --------------------------------------------------
+// CONFIGURATION WEBRTC
+// --------------------------------------------------
+
+const config = {
+
+    iceServers: [
+        {
+            urls:
+                "stun:stun.l.google.com:19302"
+        }
+    ]
+
+};
+
+
+// --------------------------------------------------
+// CONNEXION SOCKET
+// --------------------------------------------------
 
 socket.on("connect", () => {
 
@@ -64,100 +110,314 @@ socket.on("connect", () => {
 
 });
 
-socket.on("offer", async (offer) => {
 
-    console.log("📱 OFFER REÇUE");
+// --------------------------------------------------
+// RÉCEPTION OFFER
+// --------------------------------------------------
 
-    status.textContent =
-        "Téléphone détecté...";
-
-    pc = new RTCPeerConnection({
-        iceServers: [
-            { urls: "stun:stun.l.google.com:19302" }
-        ]
-    });
-
-    pc.onconnectionstatechange = () => {
+socket.on(
+    "offer",
+    async (offer) => {
 
         console.log(
-            "PC WebRTC :",
-            pc.connectionState
+            "📱 OFFER REÇUE"
         );
+
 
         status.textContent =
-            "WebRTC : " + pc.connectionState;
-    };
+            "Téléphone détecté...";
 
-    pc.ontrack = async (event) => {
 
-        console.log("🎥 FLUX VIDÉO REÇU");
+        // Fermer une ancienne connexion
 
-        video.srcObject = event.streams[0];
+        if (pc) {
 
-        try {
-            await video.play();
-            console.log("▶ Vidéo démarrée");
-        } catch (error) {
-            console.error(
-                "Erreur lecture vidéo :",
-                error
-            );
-        }
-    };
+            pc.close();
 
-    await pc.setRemoteDescription(offer);
-
-    const answer =
-        await pc.createAnswer();
-
-    await pc.setLocalDescription(answer);
-
-    await waitIce(pc);
-
-    console.log("Envoi de la réponse");
-
-    socket.emit(
-        "answer",
-        pc.localDescription
-    );
-
-});
-
-function waitIce(pc) {
-
-    return new Promise(resolve => {
-
-        if (pc.iceGatheringState === "complete") {
-            resolve();
-            return;
         }
 
-        const check = () => {
 
-            console.log(
-                "ICE :",
-                pc.iceGatheringState
+        remoteDescriptionSet =
+            false;
+
+        pendingCandidates = [];
+
+
+        // --------------------------------------------------
+        // NOUVELLE CONNEXION WEBRTC
+        // --------------------------------------------------
+
+        pc =
+            new RTCPeerConnection(
+                config
             );
 
-            if (pc.iceGatheringState === "complete") {
 
-                pc.removeEventListener(
-                    "icegatheringstatechange",
-                    check
+        // --------------------------------------------------
+        // RÉCEPTION VIDÉO
+        // --------------------------------------------------
+
+        pc.ontrack =
+            async (event) => {
+
+                console.log(
+                    "🎥 FLUX VIDÉO REÇU"
                 );
 
-                resolve();
-            }
-        };
 
-        pc.addEventListener(
-            "icegatheringstatechange",
-            check
+                if (
+                    event.streams &&
+                    event.streams[0]
+                ) {
+
+                    video.srcObject =
+                        event.streams[0];
+
+                }
+
+
+                try {
+
+                    await video.play();
+
+                    console.log(
+                        "▶ Vidéo démarrée"
+                    );
+
+                }
+
+                catch (error) {
+
+                    console.log(
+                        "Lecture automatique bloquée :",
+                        error
+                    );
+
+                }
+
+
+                status.textContent =
+                    "● Flux caméra reçu";
+
+            };
+
+
+        // --------------------------------------------------
+        // ÉTAT WEBRTC
+        // --------------------------------------------------
+
+        pc.onconnectionstatechange =
+            () => {
+
+                console.log(
+                    "PC WebRTC :",
+                    pc.connectionState
+                );
+
+
+                if (
+                    pc.connectionState ===
+                    "connected"
+                ) {
+
+                    status.textContent =
+                        "● Flux caméra connecté";
+
+                }
+
+
+                if (
+                    pc.connectionState ===
+                    "connecting"
+                ) {
+
+                    status.textContent =
+                        "Connexion vidéo...";
+
+                }
+
+
+                if (
+                    pc.connectionState ===
+                    "failed"
+                ) {
+
+                    status.textContent =
+                        "Connexion WebRTC échouée";
+
+                }
+
+            };
+
+
+        // --------------------------------------------------
+        // ENVOI CANDIDATS ICE
+        // --------------------------------------------------
+
+        pc.onicecandidate =
+            (event) => {
+
+                if (event.candidate) {
+
+                    console.log(
+                        "❄️ Envoi candidat ICE"
+                    );
+
+                    socket.emit(
+                        "ice-candidate",
+                        event.candidate
+                    );
+
+                }
+
+            };
+
+
+        try {
+
+            // --------------------------------------------------
+            // APPLIQUER OFFER
+            // --------------------------------------------------
+
+            await pc.setRemoteDescription(
+                offer
+            );
+
+
+            remoteDescriptionSet =
+                true;
+
+
+            // --------------------------------------------------
+            // AJOUTER LES CANDIDATS
+            // ARRIVÉS AVANT L'OFFER
+            // --------------------------------------------------
+
+            for (
+                const candidate
+                of pendingCandidates
+            ) {
+
+                try {
+
+                    await pc.addIceCandidate(
+                        candidate
+                    );
+
+                }
+
+                catch (error) {
+
+                    console.error(
+                        "Erreur ICE :",
+                        error
+                    );
+
+                }
+
+            }
+
+
+            pendingCandidates = [];
+
+
+            // --------------------------------------------------
+            // CRÉER ANSWER
+            // --------------------------------------------------
+
+            const answer =
+                await pc.createAnswer();
+
+
+            await pc.setLocalDescription(
+                answer
+            );
+
+
+            console.log(
+                "📤 Envoi de la réponse"
+            );
+
+
+            socket.emit(
+                "answer",
+                pc.localDescription
+            );
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "Erreur WebRTC :",
+                error
+            );
+
+            status.textContent =
+                "Erreur WebRTC";
+
+        }
+
+    }
+);
+
+
+// --------------------------------------------------
+// RÉCEPTION CANDIDAT ICE
+// --------------------------------------------------
+
+socket.on(
+    "ice-candidate",
+    async (candidate) => {
+
+        console.log(
+            "❄️ Candidat ICE reçu"
         );
-    });
-}
+
+
+        if (!pc) {
+
+            return;
+
+        }
+
+
+        // Le candidat arrive avant
+        // l'offer distante
+
+        if (!remoteDescriptionSet) {
+
+            pendingCandidates.push(
+                candidate
+            );
+
+            return;
+
+        }
+
+
+        try {
+
+            await pc.addIceCandidate(
+                candidate
+            );
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "Erreur ajout ICE :",
+                error
+            );
+
+        }
+
+    }
+);
 
 </script>
 
 </body>
+
 </html>
