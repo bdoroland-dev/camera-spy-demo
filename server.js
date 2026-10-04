@@ -12,7 +12,6 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, "public")));
 
 io.on("connection", (socket) => {
-
     console.log("Client connecté :", socket.id);
 
     socket.on("offer", (offer) => {

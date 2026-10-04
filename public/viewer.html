@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CameraShare — PC</title>
+
+    <title>CameraShare — Récepteur PC</title>
 
     <style>
+
         body {
             margin: 0;
             background: #111;
@@ -18,36 +20,62 @@
             margin: 30px;
         }
 
-        video {
-            width: 90%;
-            max-width: 1000px;
-            background: black;
-            border-radius: 10px;
-        }
-
         #status {
             margin: 20px;
+            font-size: 18px;
         }
+
+        #remoteVideo {
+            width: 90%;
+            max-width: 1000px;
+            min-height: 300px;
+            background: black;
+            border-radius: 10px;
+            object-fit: contain;
+        }
+
+        #startVideo {
+            padding: 12px 25px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
     </style>
+
 </head>
 
 <body>
 
     <h1>CameraShare — Récepteur PC</h1>
 
-    <div id="status">En attente du téléphone...</div>
+    <div id="status">
+        En attente du téléphone...
+    </div>
 
-    <video id="remoteVideo" autoplay playsinline></video>
+    <button id="startVideo">
+        Afficher le flux vidéo
+    </button>
+
+    <br><br>
+
+    <video
+        id="remoteVideo"
+        autoplay
+        muted
+        playsinline>
+    </video>
 
     <script src="/socket.io/socket.io.js"></script>
 
     <script>
+
         const socket = io();
 
         const video = document.getElementById("remoteVideo");
         const status = document.getElementById("status");
+        const startVideo = document.getElementById("startVideo");
 
-        let peerConnection;
+        let peerConnection = null;
 
         const config = {
             iceServers: [
@@ -57,67 +85,117 @@
             ]
         };
 
+        startVideo.addEventListener("click", async () => {
+
+            try {
+
+                await video.play();
+
+                startVideo.style.display = "none";
+
+                status.textContent =
+                    "● Flux caméra affiché";
+
+            } catch (error) {
+
+                console.error(
+                    "Impossible de lire le flux :",
+                    error
+                );
+
+            }
+
+        });
+
         socket.on("offer", async (offer) => {
 
             console.log("Offer reçue");
 
-            peerConnection = new RTCPeerConnection(config);
+            status.textContent =
+                "Connexion au téléphone...";
+
+            peerConnection =
+                new RTCPeerConnection(config);
 
             peerConnection.ontrack = event => {
 
                 console.log("Flux vidéo reçu");
 
-                if (event.streams && event.streams[0]) {
-                    video.srcObject = event.streams[0];
+                if (
+                    event.streams &&
+                    event.streams.length > 0
+                ) {
+
+                    video.srcObject =
+                        event.streams[0];
+
+                    status.textContent =
+                        "● Flux vidéo reçu — cliquez sur Afficher le flux vidéo";
+
                 }
 
-                video.onloadedmetadata = async () => {
-                    try {
-                        await video.play();
-                    } catch (error) {
-                        console.error("Lecture vidéo bloquée :", error);
-                    }
-                };
-
-                status.textContent = "● Flux caméra reçu";
             };
 
             peerConnection.onicecandidate = event => {
 
                 if (event.candidate) {
-                    socket.emit("ice-candidate", event.candidate);
+
+                    socket.emit(
+                        "ice-candidate",
+                        event.candidate
+                    );
+
                 }
 
             };
 
-            await peerConnection.setRemoteDescription(offer);
+            peerConnection.onconnectionstatechange = () => {
 
-            const answer = await peerConnection.createAnswer();
+                console.log(
+                    "État WebRTC :",
+                    peerConnection.connectionState
+                );
 
-            await peerConnection.setLocalDescription(answer);
+            };
+
+            await peerConnection.setRemoteDescription(
+                offer
+            );
+
+            const answer =
+                await peerConnection.createAnswer();
+
+            await peerConnection.setLocalDescription(
+                answer
+            );
 
             socket.emit("answer", answer);
-        });
-
-        socket.on("answer", async (answer) => {
-
-            if (peerConnection) {
-                await peerConnection.setRemoteDescription(answer);
-            }
 
         });
 
         socket.on("ice-candidate", async (candidate) => {
 
-            if (peerConnection) {
-                try {
-                    await peerConnection.addIceCandidate(candidate);
-                } catch (error) {
-                    console.error(error);
-                }
+            if (!peerConnection) {
+                return;
+            }
+
+            try {
+
+                await peerConnection.addIceCandidate(
+                    candidate
+                );
+
+            } catch (error) {
+
+                console.error(
+                    "Erreur ICE :",
+                    error
+                );
+
             }
 
         });
+
     </script>
 
 </body>
