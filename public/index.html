@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Demo</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 30px;
+        }
+
+        video {
+            width: 100%;
+            max-width: 700px;
+            border-radius: 12px;
+            background: black;
+        }
+
+        button {
+            padding: 15px 25px;
+            font-size: 18px;
+            margin: 15px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>📷 CameraShare</h1>
+
+    <p id="status">Caméra inactive</p>
+
+    <button id="start">
+        Activer la caméra
+    </button>
+
+    <br>
+
+    <video id="camera" autoplay muted playsinline></video>
+
+    <script>
+
+        const button = document.getElementById("start");
+        const video = document.getElementById("camera");
+        const status = document.getElementById("status");
+
+        button.addEventListener("click", async () => {
+
+            try {
+
+                const stream =
+                    await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+
+                video.srcObject = stream;
+
+                status.textContent =
+                    "🟢 Caméra activée";
+
+            } catch (error) {
+
+                console.error(error);
+
+                status.textContent =
+                    "🔴 Accès à la caméra refusé";
+
+            }
+
+        });
+
+    </script>
+
+</body>
+</html>
