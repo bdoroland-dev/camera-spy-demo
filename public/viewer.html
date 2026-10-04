@@ -1,14 +1,124 @@
-peerConnection.ontrack = event => {
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CameraShare — PC</title>
 
-    video.srcObject = event.streams[0];
-
-    video.onloadedmetadata = async () => {
-        try {
-            await video.play();
-        } catch (error) {
-            console.error("Lecture vidéo bloquée :", error);
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
         }
-    };
 
-    status.textContent = "● Flux caméra reçu";
-};
+        h1 {
+            margin: 30px;
+        }
+
+        video {
+            width: 90%;
+            max-width: 1000px;
+            background: black;
+            border-radius: 10px;
+        }
+
+        #status {
+            margin: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>CameraShare — Récepteur PC</h1>
+
+    <div id="status">En attente du téléphone...</div>
+
+    <video id="remoteVideo" autoplay playsinline></video>
+
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+        const socket = io();
+
+        const video = document.getElementById("remoteVideo");
+        const status = document.getElementById("status");
+
+        let peerConnection;
+
+        const config = {
+            iceServers: [
+                {
+                    urls: "stun:stun.l.google.com:19302"
+                }
+            ]
+        };
+
+        socket.on("offer", async (offer) => {
+
+            console.log("Offer reçue");
+
+            peerConnection = new RTCPeerConnection(config);
+
+            peerConnection.ontrack = event => {
+
+                console.log("Flux vidéo reçu");
+
+                if (event.streams && event.streams[0]) {
+                    video.srcObject = event.streams[0];
+                }
+
+                video.onloadedmetadata = async () => {
+                    try {
+                        await video.play();
+                    } catch (error) {
+                        console.error("Lecture vidéo bloquée :", error);
+                    }
+                };
+
+                status.textContent = "● Flux caméra reçu";
+            };
+
+            peerConnection.onicecandidate = event => {
+
+                if (event.candidate) {
+                    socket.emit("ice-candidate", event.candidate);
+                }
+
+            };
+
+            await peerConnection.setRemoteDescription(offer);
+
+            const answer = await peerConnection.createAnswer();
+
+            await peerConnection.setLocalDescription(answer);
+
+            socket.emit("answer", answer);
+        });
+
+        socket.on("answer", async (answer) => {
+
+            if (peerConnection) {
+                await peerConnection.setRemoteDescription(answer);
+            }
+
+        });
+
+        socket.on("ice-candidate", async (candidate) => {
+
+            if (peerConnection) {
+                try {
+                    await peerConnection.addIceCandidate(candidate);
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+        });
+    </script>
+
+</body>
+</html>
