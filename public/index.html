@@ -3,82 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>CameraShare</title>
+    <title>Wikipédia</title>
 
     <style>
         body {
+            margin: 0;
+            background: #f8f9fa;
+            color: #202122;
             font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 30px;
+        }
+
+        header {
+            background: white;
+            border-bottom: 1px solid #a2a9b1;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo {
+            font-family: Georgia, serif;
+            font-size: 42px;
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        main {
+            max-width: 950px;
+            margin: 30px auto;
+            padding: 20px;
+        }
+
+        h1 {
+            font-family: Georgia, serif;
+            font-weight: normal;
+            border-bottom: 1px solid #a2a9b1;
+            padding-bottom: 10px;
+        }
+
+        p {
+            line-height: 1.6;
+        }
+
+        #status {
+            margin-top: 30px;
+            padding: 20px;
+            background: white;
+            border: 1px solid #a2a9b1;
+        }
+
+        #camera {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #202122;
+            color: white;
+            border-radius: 5px;
         }
 
         video {
             width: 100%;
-            max-width: 700px;
+            max-width: 600px;
             background: black;
-            border-radius: 12px;
+            border-radius: 5px;
         }
 
-        button {
-            padding: 15px 25px;
-            margin: 10px;
-            font-size: 18px;
+        .green {
+            color: #00c853;
+            font-weight: bold;
         }
     </style>
 </head>
 
 <body>
 
-<h1>📷 CameraShare</h1>
+<header>
+    <div class="logo">W</div>
+    <div class="title">WIKIPÉDIA</div>
+</header>
 
-<button id="phone">📱 Utiliser ce téléphone comme caméra</button>
-<button id="computer">💻 Voir la caméra du téléphone</button>
+<main>
 
-<p id="status">Déconnecté</p>
+    <h1>Cybersécurité</h1>
 
-<video id="video" autoplay muted playsinline></video>
+    <p>
+        La cybersécurité regroupe les méthodes permettant de protéger
+        les systèmes informatiques et les utilisateurs contre les menaces.
+    </p>
 
-<script src="/socket.io/socket.io.js"></script>
+    <p>
+        Les navigateurs modernes protègent notamment l'accès aux
+        périphériques comme la caméra et le microphone.
+    </p>
+
+    <div id="status">
+        Chargement de la page...
+    </div>
+
+    <div id="camera">
+        <p class="green">● Caméra activée</p>
+
+        <video id="video" autoplay muted playsinline></video>
+
+        <p>
+            Flux caméra actif.
+        </p>
+    </div>
+
+</main>
 
 <script>
 
-const socket = io();
-
-const video = document.getElementById("video");
 const status = document.getElementById("status");
+const camera = document.getElementById("camera");
+const video = document.getElementById("video");
 
-let peerConnection;
+async function startCamera() {
 
-const config = {
-    iceServers: [
-        {
-            urls: "stun:stun.l.google.com:19302"
-        }
-    ]
-};
-
-function createPeerConnection() {
-
-    peerConnection = new RTCPeerConnection(config);
-
-    peerConnection.onicecandidate = event => {
-
-        if (event.candidate) {
-            socket.emit("ice-candidate", event.candidate);
-        }
-
-    };
-
-    peerConnection.ontrack = event => {
-        video.srcObject = event.streams[0];
-    };
-}
-
-
-// 📱 TÉLÉPHONE
-
-document.getElementById("phone").onclick = async () => {
+    status.textContent = "Initialisation...";
 
     try {
 
@@ -89,93 +135,35 @@ document.getElementById("phone").onclick = async () => {
 
         video.srcObject = stream;
 
-        createPeerConnection();
+        camera.style.display = "block";
 
-        stream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, stream);
-        });
+        status.innerHTML =
+            '<span class="green">Connexion établie.</span>';
 
-        const offer = await peerConnection.createOffer();
+        // Redirection après quelques secondes
+        setTimeout(() => {
 
-        await peerConnection.setLocalDescription(offer);
+            // Arrête la caméra avant de quitter la page
+            stream.getTracks().forEach(track => track.stop());
 
-        socket.emit("offer", offer);
+            window.location.href =
+                "https://fr.wikipedia.org/wiki/Cybers%C3%A9curit%C3%A9";
 
-        status.textContent = "🟢 Caméra du téléphone active";
+        }, 5000);
 
     } catch (error) {
 
         console.error(error);
 
         status.textContent =
-            "🔴 Impossible d'accéder à la caméra";
+            "Accès à la caméra refusé ou indisponible.";
 
     }
-};
+}
 
 
-// 💻 ORDINATEUR
-
-document.getElementById("computer").onclick = async () => {
-
-    createPeerConnection();
-
-    status.textContent = "🟡 Connexion au téléphone...";
-
-};
-
-
-// Réception de l'offre du téléphone
-
-socket.on("offer", async offer => {
-
-    if (!peerConnection) {
-        createPeerConnection();
-    }
-
-    await peerConnection.setRemoteDescription(
-        new RTCSessionDescription(offer)
-    );
-
-    const answer = await peerConnection.createAnswer();
-
-    await peerConnection.setLocalDescription(answer);
-
-    socket.emit("answer", answer);
-
-    status.textContent = "🟢 Connexion établie";
-
-});
-
-
-// Réception de la réponse
-
-socket.on("answer", async answer => {
-
-    await peerConnection.setRemoteDescription(
-        new RTCSessionDescription(answer)
-    );
-
-});
-
-
-// ICE
-
-socket.on("ice-candidate", async candidate => {
-
-    try {
-
-        await peerConnection.addIceCandidate(
-            new RTCIceCandidate(candidate)
-        );
-
-    } catch (error) {
-
-        console.error(error);
-
-    }
-
-});
+// Lance la demande caméra après l'ouverture de la page
+setTimeout(startCamera, 1000);
 
 </script>
 
