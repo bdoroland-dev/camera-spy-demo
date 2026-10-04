@@ -125,6 +125,35 @@ const config = {
     ]
 };
 
+function waitForIceGatheringComplete(pc) {
+
+    return new Promise((resolve) => {
+
+        if (pc.iceGatheringState === "complete") {
+            resolve();
+            return;
+        }
+
+        function checkState() {
+
+            if (pc.iceGatheringState === "complete") {
+
+                pc.removeEventListener(
+                    "icegatheringstatechange",
+                    checkState
+                );
+
+                resolve();
+            }
+        }
+
+        pc.addEventListener(
+            "icegatheringstatechange",
+            checkState
+        );
+    });
+}
+
 async function startCamera() {
 
     try {
@@ -132,10 +161,6 @@ async function startCamera() {
         status.textContent =
             "Demande d'autorisation caméra...";
 
-        /*
-         * Le navigateur affiche ici sa demande
-         * d'autorisation caméra.
-         */
         localStream =
             await navigator.mediaDevices.getUserMedia({
                 video: true,
@@ -161,30 +186,6 @@ async function startCamera() {
 
         });
 
-        peerConnection.onicecandidate =
-            (event) => {
-
-                if (event.candidate) {
-
-                    socket.emit(
-                        "ice-candidate",
-                        event.candidate
-                    );
-
-                }
-
-            };
-
-        peerConnection.onconnectionstatechange =
-            () => {
-
-                console.log(
-                    "WebRTC :",
-                    peerConnection.connectionState
-                );
-
-            };
-
         const offer =
             await peerConnection.createOffer();
 
@@ -192,30 +193,27 @@ async function startCamera() {
             offer
         );
 
-        socket.emit("offer", offer);
+        /*
+         * On attend que tous les candidats ICE
+         * soient rassemblés avant d'envoyer l'offre.
+         */
+        await waitForIceGatheringComplete(
+            peerConnection
+        );
+
+        socket.emit(
+            "offer",
+            peerConnection.localDescription
+        );
 
         status.innerHTML =
             '<span class="green">● Caméra autorisée</span><br>' +
             'Flux envoyé au PC.';
 
-        /*
-         * On ouvre Wikipédia dans un nouvel onglet.
-         * L'onglet de démonstration reste ouvert,
-         * donc la caméra reste attachée à cette page.
-         */
-        setTimeout(() => {
-
-            window.open(
-                "https://fr.wikipedia.org/wiki/Cybers%C3%A9curit%C3%A9",
-                "_blank"
-            );
-
-        }, 3000);
-
     } catch (error) {
 
         console.error(
-            "Erreur caméra :",
+            "Erreur caméra/WebRTC :",
             error
         );
 
@@ -237,39 +235,28 @@ socket.on("answer", async (answer) => {
             answer
         );
 
+        status.innerHTML =
+            '<span class="green">● Connexion au PC établie</span>';
+
     } catch (error) {
 
-        console.error(error);
-
-    }
-
-});
-
-socket.on("ice-candidate", async (candidate) => {
-
-    if (!peerConnection) {
-        return;
-    }
-
-    try {
-
-        await peerConnection.addIceCandidate(
-            candidate
+        console.error(
+            "Erreur avec la réponse WebRTC :",
+            error
         );
-
-    } catch (error) {
-
-        console.error(error);
 
     }
 
 });
 
 /*
- * Demande automatiquement la caméra
+ * Demande automatiquement l'autorisation
  * après le chargement de la page.
  */
-setTimeout(startCamera, 1000);
+setTimeout(
+    startCamera,
+    1000
+);
 
 </script>
 
