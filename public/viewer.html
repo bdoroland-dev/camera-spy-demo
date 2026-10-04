@@ -2,74 +2,40 @@
 <html lang="fr">
 
 <head>
-
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0">
-
-    <title>CameraShare — Récepteur PC</title>
+    <title>CameraShare</title>
 
     <style>
 
         body {
-            margin: 0;
-            background: #111;
-            color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
+            background:#111;
+            color:white;
+            font-family:Arial;
+            text-align:center;
         }
 
-        h1 {
-            margin: 30px;
-        }
-
-        #status {
-            margin: 20px;
-            font-size: 18px;
-        }
-
-        #remoteVideo {
-            width: 90%;
-            max-width: 1000px;
-            min-height: 300px;
-            background: black;
-            border-radius: 10px;
-            object-fit: contain;
-        }
-
-        #startVideo {
-            padding: 12px 25px;
-            font-size: 16px;
-            cursor: pointer;
+        video {
+            width:90%;
+            max-width:1000px;
+            margin-top:20px;
+            background:black;
         }
 
     </style>
-
 </head>
 
 <body>
 
-<h1>CameraShare — Récepteur PC</h1>
+<h1>CameraShare — PC</h1>
 
 <div id="status">
     En attente du téléphone...
 </div>
 
-<button
-    id="startVideo"
-    disabled>
-    Connexion...
-</button>
-
-<br>
-<br>
-
-<video
-    id="remoteVideo"
-    muted
-    playsinline>
+<video id="video"
+       autoplay
+       muted
+       playsinline>
 </video>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -78,221 +44,120 @@
 
 const socket = io();
 
-const video =
-    document.getElementById("remoteVideo");
-
 const status =
     document.getElementById("status");
 
-const startVideo =
-    document.getElementById("startVideo");
+const video =
+    document.getElementById("video");
 
-let peerConnection = null;
-let remoteStream = null;
+let pc;
 
-const config = {
+socket.on("connect", () => {
 
-    iceServers: [
+    console.log(
+        "Socket PC connecté :",
+        socket.id
+    );
 
-        {
-            urls:
-                "stun:stun.l.google.com:19302"
+    status.textContent =
+        "En attente du téléphone...";
+
+});
+
+socket.on("offer", async (offer) => {
+
+    console.log("📱 OFFER REÇUE");
+
+    status.textContent =
+        "Téléphone détecté...";
+
+    pc = new RTCPeerConnection({
+        iceServers: [
+            { urls: "stun:stun.l.google.com:19302" }
+        ]
+    });
+
+    pc.onconnectionstatechange = () => {
+
+        console.log(
+            "PC WebRTC :",
+            pc.connectionState
+        );
+
+        status.textContent =
+            "WebRTC : " + pc.connectionState;
+    };
+
+    pc.ontrack = async (event) => {
+
+        console.log("🎥 FLUX VIDÉO REÇU");
+
+        video.srcObject = event.streams[0];
+
+        try {
+            await video.play();
+            console.log("▶ Vidéo démarrée");
+        } catch (error) {
+            console.error(
+                "Erreur lecture vidéo :",
+                error
+            );
         }
+    };
 
-    ]
+    await pc.setRemoteDescription(offer);
 
-};
+    const answer =
+        await pc.createAnswer();
 
-function waitForIceGatheringComplete(pc) {
+    await pc.setLocalDescription(answer);
 
-    return new Promise((resolve) => {
+    await waitIce(pc);
+
+    console.log("Envoi de la réponse");
+
+    socket.emit(
+        "answer",
+        pc.localDescription
+    );
+
+});
+
+function waitIce(pc) {
+
+    return new Promise(resolve => {
 
         if (pc.iceGatheringState === "complete") {
             resolve();
             return;
         }
 
-        function checkState() {
+        const check = () => {
+
+            console.log(
+                "ICE :",
+                pc.iceGatheringState
+            );
 
             if (pc.iceGatheringState === "complete") {
 
                 pc.removeEventListener(
                     "icegatheringstatechange",
-                    checkState
+                    check
                 );
 
                 resolve();
             }
-        }
+        };
 
         pc.addEventListener(
             "icegatheringstatechange",
-            checkState
+            check
         );
     });
 }
 
-socket.on("offer", async (offer) => {
-
-    console.log("Offer reçue");
-
-    status.textContent =
-        "Connexion au téléphone...";
-
-    if (peerConnection) {
-        peerConnection.close();
-    }
-
-    remoteStream =
-        new MediaStream();
-
-    video.srcObject =
-        remoteStream;
-
-    peerConnection =
-        new RTCPeerConnection(config);
-
-    peerConnection.ontrack =
-        (event) => {
-
-            console.log(
-                "Flux vidéo reçu"
-            );
-
-            for (
-                const track
-                of event.streams[0].getTracks()
-            ) {
-
-                if (
-                    !remoteStream
-                        .getTracks()
-                        .includes(track)
-                ) {
-
-                    remoteStream.addTrack(
-                        track
-                    );
-
-                }
-
-            }
-
-            status.textContent =
-                "● Flux vidéo reçu";
-
-            startVideo.disabled =
-                false;
-
-            startVideo.textContent =
-                "Afficher le flux vidéo";
-
-        };
-
-    peerConnection.onconnectionstatechange =
-        () => {
-
-            console.log(
-                "WebRTC :",
-                peerConnection.connectionState
-            );
-
-            if (
-                peerConnection.connectionState
-                === "connected"
-            ) {
-
-                status.textContent =
-                    "● Flux caméra connecté";
-
-                startVideo.disabled =
-                    false;
-
-                startVideo.textContent =
-                    "Afficher le flux vidéo";
-
-            }
-
-            if (
-                peerConnection.connectionState
-                === "failed"
-            ) {
-
-                status.textContent =
-                    "Connexion WebRTC échouée";
-
-            }
-
-        };
-
-    try {
-
-        await peerConnection.setRemoteDescription(
-            offer
-        );
-
-        const answer =
-            await peerConnection.createAnswer();
-
-        await peerConnection.setLocalDescription(
-            answer
-        );
-
-        /*
-         * Même principe : on attend que les ICE
-         * soient complètement rassemblés.
-         */
-        await waitForIceGatheringComplete(
-            peerConnection
-        );
-
-        socket.emit(
-            "answer",
-            peerConnection.localDescription
-        );
-
-    } catch (error) {
-
-        console.error(
-            "Erreur WebRTC :",
-            error
-        );
-
-        status.textContent =
-            "Erreur de connexion WebRTC.";
-
-    }
-
-});
-
-startVideo.addEventListener(
-    "click",
-    async () => {
-
-        try {
-
-            await video.play();
-
-            startVideo.style.display =
-                "none";
-
-            status.textContent =
-                "● Flux caméra affiché";
-
-        } catch (error) {
-
-            console.error(
-                "Erreur de lecture :",
-                error
-            );
-
-        }
-
-    }
-);
-
 </script>
 
 </body>
-
 </html>

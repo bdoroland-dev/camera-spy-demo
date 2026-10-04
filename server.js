@@ -15,12 +15,12 @@ io.on("connection", (socket) => {
     console.log("Client connecté :", socket.id);
 
     socket.on("offer", (offer) => {
-        console.log("Offer reçue");
+        console.log("📱 Offre reçue");
         socket.broadcast.emit("offer", offer);
     });
 
     socket.on("answer", (answer) => {
-        console.log("Answer reçue");
+        console.log("💻 Réponse reçue");
         socket.broadcast.emit("answer", answer);
     });
 

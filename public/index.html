@@ -3,261 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Wikipédia — Démonstration</title>
-
-    <style>
-        body {
-            margin: 0;
-            background: #f8f9fa;
-            color: #202122;
-            font-family: Arial, sans-serif;
-        }
-
-        header {
-            background: white;
-            border-bottom: 1px solid #a2a9b1;
-            padding: 15px 30px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .logo {
-            font-family: Georgia, serif;
-            font-size: 42px;
-        }
-
-        .title {
-            font-size: 22px;
-            font-weight: bold;
-        }
-
-        main {
-            max-width: 950px;
-            margin: 30px auto;
-            padding: 20px;
-        }
-
-        h1 {
-            font-family: Georgia, serif;
-            font-weight: normal;
-            border-bottom: 1px solid #a2a9b1;
-            padding-bottom: 10px;
-        }
-
-        p {
-            line-height: 1.6;
-        }
-
-        #status {
-            margin-top: 30px;
-            padding: 20px;
-            background: white;
-            border: 1px solid #a2a9b1;
-        }
-
-        .green {
-            color: #00a000;
-            font-weight: bold;
-        }
-
-        #localCamera {
-            width: 100%;
-            max-width: 500px;
-            margin-top: 20px;
-            display: none;
-        }
-    </style>
+    <title>Démonstration</title>
 </head>
 
 <body>
+    <h1>Démonstration cybersécurité</h1>
 
-<header>
-    <div class="logo">W</div>
-    <div class="title">WIKIPÉDIA — Démonstration</div>
-</header>
+    <p id="status">Connexion...</p>
 
-<main>
-
-    <h1>Cybersécurité</h1>
-
-    <p>
-        Cette page présente une démonstration pédagogique
-        de l'utilisation d'une caméra par un navigateur.
-    </p>
-
-    <p>
-        Le navigateur demande explicitement l'autorisation
-        avant de permettre l'accès à la caméra.
-    </p>
-
-    <div id="status">
-        Initialisation...
-    </div>
-
-    <video
-        id="localCamera"
-        autoplay
-        muted
-        playsinline>
+    <video id="camera"
+           autoplay
+           muted
+           playsinline
+           style="width:100%;max-width:500px;">
     </video>
-
-</main>
 
 <script src="/socket.io/socket.io.js"></script>
 
 <script>
-
 const socket = io();
 
 const status = document.getElementById("status");
-const localCamera = document.getElementById("localCamera");
+const camera = document.getElementById("camera");
 
-let peerConnection = null;
-let localStream = null;
+let pc;
+let stream;
 
-const config = {
-    iceServers: [
-        {
-            urls: "stun:stun.l.google.com:19302"
-        }
-    ]
-};
+socket.on("connect", () => {
+    console.log("Socket connecté :", socket.id);
+    status.textContent = "Connexion au serveur...";
+    
+    setTimeout(start, 1000);
+});
 
-function waitForIceGatheringComplete(pc) {
+socket.on("disconnect", () => {
+    console.log("Socket déconnecté");
+    status.textContent = "Serveur déconnecté";
+});
 
-    return new Promise((resolve) => {
+async function start() {
+
+    try {
+
+        status.textContent = "Demande d'autorisation caméra...";
+
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+        });
+
+        camera.srcObject = stream;
+
+        status.textContent = "Caméra autorisée — connexion au PC...";
+
+        pc = new RTCPeerConnection({
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" }
+            ]
+        });
+
+        stream.getTracks().forEach(track => {
+            pc.addTrack(track, stream);
+        });
+
+        pc.onconnectionstatechange = () => {
+            console.log(
+                "Téléphone WebRTC :",
+                pc.connectionState
+            );
+        };
+
+        const offer = await pc.createOffer();
+
+        await pc.setLocalDescription(offer);
+
+        await waitIce(pc);
+
+        console.log("Envoi de l'offre");
+
+        socket.emit("offer", pc.localDescription);
+
+        status.textContent = "● Caméra connectée au PC";
+
+    } catch (error) {
+
+        console.error(error);
+
+        status.textContent =
+            "Erreur caméra : " + error.message;
+    }
+}
+
+socket.on("answer", async (answer) => {
+
+    console.log("Réponse du PC reçue");
+
+    try {
+
+        await pc.setRemoteDescription(answer);
+
+        console.log("Réponse WebRTC appliquée");
+
+    } catch (error) {
+
+        console.error(error);
+
+    }
+});
+
+function waitIce(pc) {
+
+    return new Promise(resolve => {
 
         if (pc.iceGatheringState === "complete") {
             resolve();
             return;
         }
 
-        function checkState() {
+        const check = () => {
+
+            console.log(
+                "ICE :",
+                pc.iceGatheringState
+            );
 
             if (pc.iceGatheringState === "complete") {
 
                 pc.removeEventListener(
                     "icegatheringstatechange",
-                    checkState
+                    check
                 );
 
                 resolve();
             }
-        }
+        };
 
         pc.addEventListener(
             "icegatheringstatechange",
-            checkState
+            check
         );
     });
 }
-
-async function startCamera() {
-
-    try {
-
-        status.textContent =
-            "Demande d'autorisation caméra...";
-
-        localStream =
-            await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: false
-            });
-
-        localCamera.srcObject = localStream;
-        localCamera.style.display = "block";
-
-        status.innerHTML =
-            '<span class="green">● Caméra autorisée</span><br>' +
-            'Connexion au PC...';
-
-        peerConnection =
-            new RTCPeerConnection(config);
-
-        localStream.getTracks().forEach((track) => {
-
-            peerConnection.addTrack(
-                track,
-                localStream
-            );
-
-        });
-
-        const offer =
-            await peerConnection.createOffer();
-
-        await peerConnection.setLocalDescription(
-            offer
-        );
-
-        /*
-         * On attend que tous les candidats ICE
-         * soient rassemblés avant d'envoyer l'offre.
-         */
-        await waitForIceGatheringComplete(
-            peerConnection
-        );
-
-        socket.emit(
-            "offer",
-            peerConnection.localDescription
-        );
-
-        status.innerHTML =
-            '<span class="green">● Caméra autorisée</span><br>' +
-            'Flux envoyé au PC.';
-
-    } catch (error) {
-
-        console.error(
-            "Erreur caméra/WebRTC :",
-            error
-        );
-
-        status.textContent =
-            "Accès à la caméra refusé ou indisponible.";
-
-    }
-}
-
-socket.on("answer", async (answer) => {
-
-    if (!peerConnection) {
-        return;
-    }
-
-    try {
-
-        await peerConnection.setRemoteDescription(
-            answer
-        );
-
-        status.innerHTML =
-            '<span class="green">● Connexion au PC établie</span>';
-
-    } catch (error) {
-
-        console.error(
-            "Erreur avec la réponse WebRTC :",
-            error
-        );
-
-    }
-
-});
-
-/*
- * Demande automatiquement l'autorisation
- * après le chargement de la page.
- */
-setTimeout(
-    startCamera,
-    1000
-);
-
 </script>
 
 </body>
