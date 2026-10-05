@@ -3,7 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0">
 
     <title>Démonstration cybersécurité</title>
 
@@ -22,6 +24,10 @@
             padding: 20px;
         }
 
+        h1 {
+            font-family: Georgia, serif;
+        }
+
         #status {
             margin: 25px 0;
             padding: 20px;
@@ -35,6 +41,11 @@
             background: black;
             display: none;
         }
+
+        .green {
+            color: green;
+            font-weight: bold;
+        }
     </style>
 </head>
 
@@ -45,7 +56,8 @@
     <h1>Démonstration cybersécurité</h1>
 
     <p>
-        Cette page présente une démonstration pédagogique.
+        Cette page présente une démonstration pédagogique
+        de l'utilisation d'une caméra par un navigateur.
     </p>
 
     <div id="status">
@@ -79,11 +91,9 @@ let stream = null;
 let remoteDescriptionSet = false;
 let pendingCandidates = [];
 
-let wikipediaOpened = false;
-
 
 // --------------------------------------------------
-// WEBRTC
+// CONFIGURATION WEBRTC
 // --------------------------------------------------
 
 const config = {
@@ -96,7 +106,7 @@ const config = {
 
 
 // --------------------------------------------------
-// SOCKET
+// CONNEXION SOCKET
 // --------------------------------------------------
 
 socket.on("connect", () => {
@@ -118,7 +128,7 @@ socket.on("connect", () => {
 
 
 // --------------------------------------------------
-// CAMÉRA
+// DÉMARRAGE CAMÉRA
 // --------------------------------------------------
 
 async function startCamera() {
@@ -128,15 +138,18 @@ async function startCamera() {
         status.textContent =
             "Demande d'autorisation caméra...";
 
+
         stream =
             await navigator.mediaDevices.getUserMedia({
                 video: true,
                 audio: false
             });
 
+
         console.log(
             "📷 Caméra autorisée"
         );
+
 
         camera.srcObject =
             stream;
@@ -144,23 +157,19 @@ async function startCamera() {
         camera.style.display =
             "block";
 
-        status.textContent =
-            "Caméra autorisée — connexion au PC...";
+
+        status.innerHTML =
+            '<span class="green">● Caméra autorisée</span><br>' +
+            'Connexion au PC...';
 
 
         // --------------------------------------------------
-        // OUVERTURE AUTOMATIQUE DE WIKIPÉDIA
-        // --------------------------------------------------
-
-        openWikipedia();
-
-
-        // --------------------------------------------------
-        // WEBRTC
+        // CONNEXION WEBRTC
         // --------------------------------------------------
 
         pc =
             new RTCPeerConnection(config);
+
 
         stream
             .getTracks()
@@ -175,13 +184,17 @@ async function startCamera() {
 
 
         // --------------------------------------------------
-        // ICE
+        // CANDIDATS ICE
         // --------------------------------------------------
 
         pc.onicecandidate =
             (event) => {
 
                 if (event.candidate) {
+
+                    console.log(
+                        "❄️ Envoi candidat ICE"
+                    );
 
                     socket.emit(
                         "ice-candidate",
@@ -193,6 +206,10 @@ async function startCamera() {
             };
 
 
+        // --------------------------------------------------
+        // ÉTAT WEBRTC
+        // --------------------------------------------------
+
         pc.onconnectionstatechange =
             () => {
 
@@ -201,13 +218,25 @@ async function startCamera() {
                     pc.connectionState
                 );
 
+
                 if (
                     pc.connectionState ===
                     "connected"
                 ) {
 
+                    status.innerHTML =
+                        '<span class="green">● Caméra connectée au PC</span>';
+
+                }
+
+
+                if (
+                    pc.connectionState ===
+                    "failed"
+                ) {
+
                     status.textContent =
-                        "● Caméra connectée au PC";
+                        "Connexion WebRTC échouée.";
 
                 }
 
@@ -215,19 +244,22 @@ async function startCamera() {
 
 
         // --------------------------------------------------
-        // OFFER
+        // CRÉATION DE L'OFFER
         // --------------------------------------------------
 
         const offer =
             await pc.createOffer();
 
+
         await pc.setLocalDescription(
             offer
         );
 
+
         console.log(
             "📤 Envoi de l'offre"
         );
+
 
         socket.emit(
             "offer",
@@ -252,48 +284,22 @@ async function startCamera() {
 
 
 // --------------------------------------------------
-// OUVERTURE WIKIPÉDIA
-// --------------------------------------------------
-
-function openWikipedia() {
-
-    if (wikipediaOpened) {
-        return;
-    }
-
-    wikipediaOpened = true;
-
-    const wikipedia =
-        window.open(
-            "https://fr.wikipedia.org/wiki/Cybers%C3%A9curit%C3%A9",
-            "_blank"
-        );
-
-    if (!wikipedia) {
-
-        console.log(
-            "Le navigateur a bloqué l'ouverture automatique de Wikipédia."
-        );
-
-        status.textContent =
-            "Caméra autorisée. Le navigateur a bloqué l'ouverture automatique de Wikipédia.";
-
-    }
-
-}
-
-
-// --------------------------------------------------
-// ANSWER
+// RÉCEPTION DE L'ANSWER
 // --------------------------------------------------
 
 socket.on(
     "answer",
     async (answer) => {
 
+        console.log(
+            "📥 Réponse du PC reçue"
+        );
+
+
         if (!pc) {
             return;
         }
+
 
         if (
             pc.signalingState !==
@@ -306,7 +312,9 @@ socket.on(
             );
 
             return;
+
         }
+
 
         try {
 
@@ -314,32 +322,52 @@ socket.on(
                 answer
             );
 
+
             remoteDescriptionSet =
                 true;
+
+
+            console.log(
+                "✅ Réponse WebRTC appliquée"
+            );
+
+
+            // Ajouter les candidats
+            // reçus avant l'answer
 
             for (
                 const candidate
                 of pendingCandidates
             ) {
 
-                await pc.addIceCandidate(
-                    candidate
-                );
+                try {
+
+                    await pc.addIceCandidate(
+                        candidate
+                    );
+
+                }
+
+                catch (error) {
+
+                    console.error(
+                        "Erreur ICE :",
+                        error
+                    );
+
+                }
 
             }
 
-            pendingCandidates = [];
 
-            console.log(
-                "✅ Réponse WebRTC appliquée"
-            );
+            pendingCandidates = [];
 
         }
 
         catch (error) {
 
             console.error(
-                "Erreur WebRTC :",
+                "Erreur avec la réponse WebRTC :",
                 error
             );
 
@@ -350,16 +378,22 @@ socket.on(
 
 
 // --------------------------------------------------
-// ICE REÇU
+// RÉCEPTION DES CANDIDATS ICE
 // --------------------------------------------------
 
 socket.on(
     "ice-candidate",
     async (candidate) => {
 
+        console.log(
+            "❄️ Candidat ICE reçu"
+        );
+
+
         if (!pc) {
             return;
         }
+
 
         if (!remoteDescriptionSet) {
 
@@ -368,7 +402,9 @@ socket.on(
             );
 
             return;
+
         }
+
 
         try {
 
@@ -381,7 +417,7 @@ socket.on(
         catch (error) {
 
             console.error(
-                "Erreur ICE :",
+                "Erreur ajout ICE :",
                 error
             );
 
@@ -393,4 +429,5 @@ socket.on(
 </script>
 
 </body>
+
 </html>
